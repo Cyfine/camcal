@@ -81,7 +81,29 @@ its plane is `Z = 0`, and the convention follows OpenCV's `(rvec, tvec)`
 `+Z` out of the board).
 
 For each camera in turn, aim it so the entire board is in view and the
-detection is stable. Then either:
+detection is stable.
+
+> **Multi-camera rigs (Linux):** integer device indices like `--device 0`
+> are unstable across reboots — the kernel enumerates `/dev/videoN` in
+> USB discovery order, so the same physical camera can land at index 0
+> one day and index 2 the next. Pass a `by-id` path instead — these are
+> keyed off the USB device serial and stay fixed across reboots and ports:
+>
+> ```bash
+> ls /dev/v4l/by-id/
+> # usb-046d_HD_Pro_Webcam_C920_A1B2C3D4-video-index0
+> # usb-046d_HD_Pro_Webcam_C920_E5F6G7H8-video-index0
+>
+> camcal-extrinsics --board examples/board.yaml \
+>                   --intrinsics intrinsics.yaml \
+>                   --live --device /dev/v4l/by-id/usb-046d_..._A1B2C3D4-video-index0 \
+>                   --out cam0_extrinsic.yaml
+> ```
+>
+> `--device` accepts either an integer or a path; integers go to
+> `cv2.VideoCapture(N)`, paths go to `cv2.VideoCapture("/dev/...")`.
+
+Then either:
 
 **Single image (one-shot):**
 ```bash

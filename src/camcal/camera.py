@@ -24,6 +24,27 @@ class CameraError(RuntimeError):
     """Raised when the camera cannot be opened or a capture fails."""
 
 
+def parse_device(value: str) -> int | str:
+    """Argparse type for ``--device``: integer index or device path.
+
+    Integer indices (``"0"``, ``"1"``) become OpenCV ``VideoCapture``
+    indices. On Linux these are unstable across reboots — the kernel
+    enumerates ``/dev/videoN`` in USB discovery order.
+
+    Pass a stable path instead when calibrating a rig of two or more
+    cameras, e.g.::
+
+        --device /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_A1B2C3D4-video-index0
+
+    These ``by-id`` paths are keyed off the USB device serial and stay
+    fixed across reboots and ports.
+    """
+    s = value.strip()
+    if s.isdigit():
+        return int(s)
+    return s
+
+
 class Camera:
     """Open a webcam, configure resolution, and capture single frames.
 
@@ -124,4 +145,4 @@ class Camera:
         return w, h
 
 
-__all__ = ["Camera", "CameraError"]
+__all__ = ["Camera", "CameraError", "parse_device"]

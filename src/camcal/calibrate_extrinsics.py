@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 
 from . import se3
+from .camera import parse_device
 from .charuco import CharucoBoard, CharucoDetection
 from .io_yaml import (
     ExtrinsicsRecord,
@@ -75,7 +76,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # Live-only args.
-    p.add_argument("--device", type=int, default=0, help="--live: device index.")
+    p.add_argument(
+        "--device", type=parse_device, default=0,
+        help="--live: OpenCV index (e.g. 0) or device path "
+             "(e.g. /dev/v4l/by-id/usb-...-video-index0). Use by-id paths "
+             "on multi-camera rigs — integer indices reshuffle on reboot.",
+    )
     p.add_argument("--width", type=int, default=1280, help="--live: capture width.")
     p.add_argument("--height", type=int, default=720, help="--live: capture height.")
     p.add_argument("--fps", type=int, default=30, help="--live: capture FPS.")
