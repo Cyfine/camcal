@@ -2,14 +2,17 @@
 
 ChArUco-based camera calibration for intrinsics and world-frame extrinsics.
 
-Two scripts, one workflow:
+Three scripts, one workflow:
 
-1. **`camcal-intrinsics`** — Zhang's-method recovery of `K` and lens distortion
+1. **`camcal-list-cameras`** — discover connected cameras and print stable
+   `--device` paths to paste into the calibration scripts.
+2. **`camcal-intrinsics`** — Zhang's-method recovery of `K` and lens distortion
    from N views of a ChArUco board.
-2. **`camcal-extrinsics`** — pose of a camera in a world frame defined by a
+3. **`camcal-extrinsics`** — pose of a camera in a world frame defined by a
    stuck-on ChArUco board (computes `W_T_C`).
 
-Both work either from pre-captured image files or live from a webcam.
+`camcal-intrinsics` and `camcal-extrinsics` work either from pre-captured image
+files or live from a webcam.
 
 ## Install
 
@@ -23,6 +26,40 @@ pip install -e .[dev]       # + pytest for the synthetic test suite
 Dependencies: `numpy`, `opencv-contrib-python`, `pyyaml`, `scipy`. Python 3.10+.
 
 ## Workflow
+
+### Step 0 — Discover your cameras
+
+Before calibrating, find out which devices `cv2.VideoCapture` will see and
+what their stable identifiers are:
+
+```
+$ camcal-list-cameras
+
+Found 2 cameras:
+
+[0] HD Pro Webcam C920 (Logitech, serial A1B2C3D4)
+    --device /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_A1B2C3D4-video-index0
+    (cv2 index 0 → /dev/video0)
+
+[1] HD Pro Webcam C920 (Logitech, serial E5F6G7H8)
+    --device /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_E5F6G7H8-video-index0
+    (cv2 index 1 → /dev/video2)
+
+Tip: copy the --device line. by-id paths stay fixed across reboots
+and USB-port swaps; integer indices do not.
+```
+
+For multi-camera rigs, **always copy the `--device <by-id-path>` line** into
+the next two steps. Integer indices like `--device 0` will silently swap
+between cameras on reboot.
+
+Add `--probe` to open each device and verify it streams (useful when a node
+is exposed but locked by another process). Add `--paths` to emit just the
+by-id paths, one per line — handy for shell loops. Add `--json` for a
+machine-readable list.
+
+Linux-only at present; on macOS/Windows the utility prints a one-line hint
+and you pass integer indices directly to `--device`.
 
 ### Step 1 — Print and measure the board
 
@@ -81,27 +118,9 @@ its plane is `Z = 0`, and the convention follows OpenCV's `(rvec, tvec)`
 `+Z` out of the board).
 
 For each camera in turn, aim it so the entire board is in view and the
-detection is stable.
-
-> **Multi-camera rigs (Linux):** integer device indices like `--device 0`
-> are unstable across reboots — the kernel enumerates `/dev/videoN` in
-> USB discovery order, so the same physical camera can land at index 0
-> one day and index 2 the next. Pass a `by-id` path instead — these are
-> keyed off the USB device serial and stay fixed across reboots and ports:
->
-> ```bash
-> ls /dev/v4l/by-id/
-> # usb-046d_HD_Pro_Webcam_C920_A1B2C3D4-video-index0
-> # usb-046d_HD_Pro_Webcam_C920_E5F6G7H8-video-index0
->
-> camcal-extrinsics --board examples/board.yaml \
->                   --intrinsics intrinsics.yaml \
->                   --live --device /dev/v4l/by-id/usb-046d_..._A1B2C3D4-video-index0 \
->                   --out cam0_extrinsic.yaml
-> ```
->
-> `--device` accepts either an integer or a path; integers go to
-> `cv2.VideoCapture(N)`, paths go to `cv2.VideoCapture("/dev/...")`.
+detection is stable. Use the `--device <by-id-path>` line you copied from
+Step 0; on a multi-camera rig, this is the difference between calibrating
+the right camera and silently calibrating the wrong one after a reboot.
 
 Then either:
 
