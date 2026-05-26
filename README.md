@@ -198,6 +198,17 @@ reprojection_error_px: 0.42
 n_views: 24
 source: zhang
 created_at: 2026-05-26T12:34:56+00:00
+camera:                         # provenance of the camera that produced this
+  by_id_path: /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_A1B2C3D4-video-index0
+  dev_path: /dev/video0
+  cv2_index: 0
+  model: HD Pro Webcam C920
+  vendor: Logitech
+  serial: A1B2C3D4
+# For files-mode runs (no live device), `camera` instead reads:
+#   camera:
+#     source: files
+#     glob: "captures/*.png"
 ```
 
 ### `extrinsics.yaml` — world-frame pose
@@ -214,6 +225,13 @@ board:                          # snapshot of the board defining the world frame
   ...
 intrinsics_path: intrinsics.yaml
 created_at: 2026-05-26T12:35:10+00:00
+camera:                         # same shape as in intrinsics.yaml
+  by_id_path: /dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_A1B2C3D4-video-index0
+  dev_path: /dev/video0
+  cv2_index: 0
+  model: HD Pro Webcam C920
+  vendor: Logitech
+  serial: A1B2C3D4
 ```
 
 ## Troubleshooting

@@ -42,6 +42,45 @@ def test_intrinsics_round_trip(tmp_path):
     assert back.source == "zhang"
     assert back.notes == "round-trip test"
     assert back.created_at  # auto-filled
+    # Camera block omitted on the way in → omitted on the way out.
+    assert back.camera is None
+
+
+def test_intrinsics_round_trip_with_camera_block(tmp_path):
+    K = np.eye(3)
+    d = np.zeros(5)
+    camera = {
+        "by_id_path": "/dev/v4l/by-id/usb-046d_C920_AAAA-video-index0",
+        "dev_path": "/dev/video0",
+        "cv2_index": 0,
+        "model": "HD Pro Webcam C920",
+        "vendor": "Logitech",
+        "serial": "AAAA",
+    }
+    rec = IntrinsicsRecord(
+        K=K, d=d, image_size=(640, 480),
+        reprojection_error_px=0.5, n_views=15,
+        camera=camera,
+    )
+    path = tmp_path / "intrinsics.yaml"
+    save_intrinsics(path, rec)
+    raw = path.read_text()
+    assert "camera:" in raw
+    assert "HD Pro Webcam C920" in raw
+    back = load_intrinsics(path)
+    assert back.camera == camera
+
+
+def test_intrinsics_round_trip_with_files_source(tmp_path):
+    rec = IntrinsicsRecord(
+        K=np.eye(3), d=np.zeros(5), image_size=(640, 480),
+        reprojection_error_px=0.5, n_views=15,
+        camera={"source": "files", "glob": "captures/*.png"},
+    )
+    path = tmp_path / "intrinsics.yaml"
+    save_intrinsics(path, rec)
+    back = load_intrinsics(path)
+    assert back.camera == {"source": "files", "glob": "captures/*.png"}
 
 
 def test_extrinsics_round_trip(tmp_path, board_config):
@@ -76,6 +115,31 @@ def test_extrinsics_round_trip(tmp_path, board_config):
     assert len(back.per_frame_W_T_C) == 3
     for orig, recovered in zip(per_frame, back.per_frame_W_T_C):
         np.testing.assert_allclose(recovered, orig, atol=1e-12)
+    # Camera block omitted on the way in → None on the way out.
+    assert back.camera is None
+
+
+def test_extrinsics_round_trip_with_camera_block(tmp_path, board_config):
+    W_T_C = np.eye(4)
+    camera = {
+        "by_id_path": "/dev/v4l/by-id/usb-Intel_R__RealSense-video-index0",
+        "dev_path": "/dev/video4",
+        "cv2_index": 0,
+        "model": "Intel(R) RealSense(TM) Depth Camera 435i",
+        "vendor": "Intel",
+        "serial": None,
+    }
+    rec = ExtrinsicsRecord(
+        W_T_C=W_T_C, board=board_config,
+        n_frames=1, reprojection_error_px_mean=0.2,
+        reprojection_error_px_max=0.4,
+        camera=camera,
+    )
+    path = tmp_path / "extrinsics.yaml"
+    save_extrinsics(path, rec)
+    assert "camera:" in path.read_text()
+    back = load_extrinsics(path)
+    assert back.camera == camera
 
 
 def test_load_board(tmp_path):

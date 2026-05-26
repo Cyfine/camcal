@@ -30,6 +30,7 @@ from .io_yaml import (
     load_intrinsics,
     save_extrinsics,
 )
+from .list_cameras import camera_block_from_device
 from .pnp import reprojection_error_px, solve_pnp
 
 
@@ -167,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
         reprojection_error_px_max=float(np.max(per_frame_reproj_max)),
         intrinsics_path=str(args.intrinsics),
         notes=args.notes,
+        camera=_camera_block(args),
         per_frame_W_T_C=per_frame_W_T_C if len(per_frame_W_T_C) > 1 else [],
     )
     save_extrinsics(args.out, record)
@@ -179,6 +181,18 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     return 0
+
+
+# ----- provenance -----
+
+
+def _camera_block(args: argparse.Namespace) -> dict[str, object]:
+    """Build the ``camera:`` block recorded into extrinsics.yaml."""
+    if args.live:
+        return camera_block_from_device(args.device)
+    if args.image is not None:
+        return {"source": "single_image", "path": str(args.image)}
+    return {"source": "files", "glob": args.images}
 
 
 # ----- input modes -----

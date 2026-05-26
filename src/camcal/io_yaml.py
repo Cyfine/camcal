@@ -40,6 +40,7 @@ class IntrinsicsRecord:
     source: str = "zhang"
     created_at: str = ""                # ISO-8601 UTC; auto-filled on save
     notes: str = ""
+    camera: dict[str, Any] | None = None  # provenance of the camera that produced this
 
 
 def save_intrinsics(path: str | Path, record: IntrinsicsRecord) -> None:
@@ -55,6 +56,8 @@ def save_intrinsics(path: str | Path, record: IntrinsicsRecord) -> None:
         "source": str(record.source),
         "created_at": record.created_at or _utc_now_iso(),
     }
+    if record.camera is not None:
+        body["camera"] = record.camera
     if record.notes:
         body["notes"] = record.notes
     path.write_text(yaml.safe_dump(body, sort_keys=False))
@@ -82,6 +85,7 @@ def load_intrinsics(path: str | Path) -> IntrinsicsRecord:
         source=str(raw.get("source", "zhang")),
         created_at=str(raw.get("created_at", "")),
         notes=str(raw.get("notes", "")),
+        camera=raw.get("camera"),
     )
 
 
@@ -104,6 +108,7 @@ class ExtrinsicsRecord:
     intrinsics_path: str = ""
     created_at: str = ""
     notes: str = ""
+    camera: dict[str, Any] | None = None  # provenance of the camera that produced this
     per_frame_W_T_C: list[np.ndarray] = field(default_factory=list, repr=False)
 
 
@@ -130,6 +135,8 @@ def save_extrinsics(path: str | Path, record: ExtrinsicsRecord) -> None:
         "intrinsics_path": str(record.intrinsics_path),
         "created_at": record.created_at or _utc_now_iso(),
     }
+    if record.camera is not None:
+        body["camera"] = record.camera
     if record.notes:
         body["notes"] = record.notes
     if record.per_frame_W_T_C:
@@ -169,6 +176,7 @@ def load_extrinsics(path: str | Path) -> ExtrinsicsRecord:
         intrinsics_path=str(raw.get("intrinsics_path", "")),
         created_at=str(raw.get("created_at", "")),
         notes=str(raw.get("notes", "")),
+        camera=raw.get("camera"),
         per_frame_W_T_C=per_frame,
     )
 

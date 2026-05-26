@@ -101,7 +101,12 @@ def vendor_name(vid_or_vendor: str) -> str:
 
 
 def list_cameras() -> list[CameraInfo]:
-    """Enumerate V4L2 capture cameras. Returns ``[]`` on non-Linux."""
+    """Enumerate V4L2 capture cameras. Returns ``[]`` on non-Linux.
+
+    Multi-interface USB cameras (e.g. RealSense exposes several capture
+    nodes under one device) collapse to a single entry per physical
+    device. The kept entry prefers the one with a stable by-id path.
+    """
     if sys.platform != "linux":
         return []
     if not _SYSFS_V4L.is_dir():
@@ -109,7 +114,8 @@ def list_cameras() -> list[CameraInfo]:
 
     by_id_index = _build_by_id_index()
 
-    cameras: list[CameraInfo] = []
+    # Pair each candidate with its USB-device key so dedup can group by it.
+    candidates: list[tuple[str, CameraInfo]] = []
     for sysfs_entry in sorted(_SYSFS_V4L.iterdir(), key=lambda p: _video_node_index(p.name)):
         if not sysfs_entry.name.startswith("video"):
             continue
@@ -117,20 +123,104 @@ def list_cameras() -> list[CameraInfo]:
             continue
         dev_path = f"/dev/{sysfs_entry.name}"
         usb_info = _read_usb_info_for(sysfs_entry)
-        cameras.append(CameraInfo(
+        usb_key = _usb_device_key(sysfs_entry) or dev_path  # fall back: per-entry group
+        candidates.append((usb_key, CameraInfo(
             by_id_path=by_id_index.get(dev_path),
             dev_path=dev_path,
-            cv2_index=-1,  # filled in below
+            cv2_index=-1,  # filled in after dedup
             model=(usb_info.product if usb_info else None) or _read_v4l_model(sysfs_entry),
             vendor=_vendor_label(usb_info),
             serial=usb_info.serial if usb_info else None,
-        ))
+        )))
+
+    cameras = _dedup_by_usb(candidates)
 
     # cv2 index assignment: VideoCapture(N) selects the N-th /dev/videoN
     # in numeric order.
     for i, cam in enumerate(cameras):
         cam.cv2_index = i
     return cameras
+
+
+def _dedup_by_usb(candidates: list[tuple[str, CameraInfo]]) -> list[CameraInfo]:
+    """Collapse multi-interface USB devices to one entry per physical camera.
+
+    Within each USB-device group, prefer the entry that has a ``by_id_path``;
+    ties break on lowest ``/dev/videoN`` index. Order across groups follows
+    the lowest ``videoN`` index seen in each group.
+    """
+    groups: dict[str, list[CameraInfo]] = {}
+    first_seen: dict[str, int] = {}
+    for usb_key, cam in candidates:
+        groups.setdefault(usb_key, []).append(cam)
+        if usb_key not in first_seen:
+            first_seen[usb_key] = _video_node_index(cam.dev_path)
+
+    chosen: list[tuple[int, CameraInfo]] = []
+    for usb_key, group in groups.items():
+        winner = min(
+            group,
+            key=lambda c: (c.by_id_path is None, _video_node_index(c.dev_path)),
+        )
+        chosen.append((first_seen[usb_key], winner))
+    chosen.sort(key=lambda pair: pair[0])
+    return [cam for _, cam in chosen]
+
+
+def _usb_device_key(sysfs_entry: Path) -> str | None:
+    """Return the USB device directory the V4L2 node lives under.
+
+    ``<sysfs>/device`` resolves to the USB *interface* (ends in ``:I.A``).
+    Its parent is the USB device itself — the same path for every V4L2
+    interface a single camera exposes.
+    """
+    device_link = sysfs_entry / "device"
+    if not device_link.exists():
+        return None
+    try:
+        return str(device_link.resolve().parent)
+    except OSError:
+        return None
+
+
+def resolve_device(device: int | str) -> CameraInfo | None:
+    """Return the ``CameraInfo`` that ``--device <device>`` would open.
+
+    Returns ``None`` if the device isn't found (non-Linux, exotic path,
+    or simply a node that isn't a capture interface).
+    """
+    cameras = list_cameras()
+    if isinstance(device, int):
+        for cam in cameras:
+            if cam.cv2_index == device:
+                return cam
+        return None
+    device = device.strip()
+    for cam in cameras:
+        if device in (cam.by_id_path, cam.dev_path):
+            return cam
+    return None
+
+
+def camera_block_from_device(device: int | str) -> dict[str, object]:
+    """Build a YAML-friendly identity block for a live-mode device.
+
+    When discovery resolves ``device`` to a known camera, the block
+    carries by-id path, dev path, model, vendor, and serial. Otherwise
+    it falls back to ``{"raw_device": "<device>"}`` so the artifact
+    still records *something* about what was opened.
+    """
+    info = resolve_device(device)
+    if info is None:
+        return {"raw_device": str(device)}
+    return {
+        "by_id_path": info.by_id_path,
+        "dev_path": info.dev_path,
+        "cv2_index": info.cv2_index,
+        "model": info.model,
+        "vendor": info.vendor,
+        "serial": info.serial,
+    }
 
 
 # ----- sysfs readers -----
@@ -391,10 +481,12 @@ __all__ = [
     "CameraInfo",
     "ParsedByIdName",
     "ProbeResult",
+    "camera_block_from_device",
     "list_cameras",
     "main",
     "parse_by_id_name",
     "probe",
+    "resolve_device",
     "vendor_name",
 ]
 

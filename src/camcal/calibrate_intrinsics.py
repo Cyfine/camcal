@@ -22,6 +22,7 @@ from .camera import parse_device
 from .charuco import CharucoBoard
 from .intrinsics import MIN_VIEWS, calibrate_intrinsics
 from .io_yaml import IntrinsicsRecord, load_board, save_intrinsics
+from .list_cameras import camera_block_from_device
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -130,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         n_views=len(image_points),
         source="zhang",
         notes=args.notes,
+        camera=_camera_block(args),
     )
     save_intrinsics(args.out, record)
     print(
@@ -139,6 +141,16 @@ def main(argv: list[str] | None = None) -> int:
         file=sys.stderr,
     )
     return 0
+
+
+# ----- provenance -----
+
+
+def _camera_block(args: argparse.Namespace) -> dict[str, object]:
+    """Build the ``camera:`` block recorded into intrinsics.yaml."""
+    if args.live:
+        return camera_block_from_device(args.device)
+    return {"source": "files", "glob": args.images}
 
 
 # ----- input modes -----

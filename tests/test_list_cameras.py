@@ -1,6 +1,7 @@
 from camcal.list_cameras import (
     CameraInfo,
     ProbeResult,
+    _dedup_by_usb,
     _format_human,
     _format_json,
     _format_paths,
@@ -136,3 +137,64 @@ def test_format_json_round_trip():
     assert data[0]["serial"] == "AAAA"
     assert data[1]["by_id_path"] is None
     assert data[1]["dev_path"] == "/dev/video2"
+
+
+# ----- dedup -----
+
+
+def _info(dev: str, by_id: str | None = None) -> CameraInfo:
+    return CameraInfo(
+        by_id_path=by_id, dev_path=dev, cv2_index=-1,
+        model="Stub", vendor=None, serial=None,
+    )
+
+
+def test_dedup_collapses_multi_interface_camera():
+    # One physical USB device exposing two V4L2 capture nodes;
+    # only the one with a by-id entry survives.
+    rs_video4 = _info(
+        "/dev/video4",
+        by_id="/dev/v4l/by-id/usb-Intel_R__RealSense_TM_-video-index0",
+    )
+    rs_video8 = _info("/dev/video8", by_id=None)
+    out = _dedup_by_usb([
+        ("/sys/devices/.../5-2.4", rs_video4),
+        ("/sys/devices/.../5-2.4", rs_video8),
+    ])
+    assert len(out) == 1
+    assert out[0].dev_path == "/dev/video4"
+    assert out[0].by_id_path is not None
+
+
+def test_dedup_keeps_distinct_cameras_separate():
+    cam_a = _info("/dev/video0", by_id="/dev/v4l/by-id/usb-A-video-index0")
+    cam_b = _info("/dev/video1", by_id="/dev/v4l/by-id/usb-B-video-index0")
+    out = _dedup_by_usb([
+        ("/sys/devices/.../usb_a", cam_a),
+        ("/sys/devices/.../usb_b", cam_b),
+    ])
+    assert len(out) == 2
+    assert {c.dev_path for c in out} == {"/dev/video0", "/dev/video1"}
+
+
+def test_dedup_prefers_by_id_then_lower_index():
+    # Both nodes lack a by-id; the lower-indexed one wins.
+    cam_video6 = _info("/dev/video6", by_id=None)
+    cam_video10 = _info("/dev/video10", by_id=None)
+    out = _dedup_by_usb([
+        ("/sys/devices/.../5-3", cam_video10),
+        ("/sys/devices/.../5-3", cam_video6),
+    ])
+    assert len(out) == 1
+    assert out[0].dev_path == "/dev/video6"
+
+
+def test_dedup_preserves_group_order_by_first_seen_index():
+    later = _info("/dev/video4", by_id="/dev/v4l/by-id/usb-Late-video-index0")
+    earlier = _info("/dev/video0", by_id="/dev/v4l/by-id/usb-Early-video-index0")
+    out = _dedup_by_usb([
+        ("/sys/devices/.../usb_late", later),
+        ("/sys/devices/.../usb_early", earlier),
+    ])
+    # The group containing video0 (lower index) comes out first.
+    assert [c.dev_path for c in out] == ["/dev/video0", "/dev/video4"]
