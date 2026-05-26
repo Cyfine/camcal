@@ -1,0 +1,15 @@
+# ChArUco board geometry, MEASURED with calipers on the printed sheet.
+#
+# Fill in square_size_m and marker_size_m AFTER printing the board and
+# measuring it. The printer rarely produces the exact size you asked
+# for; the discrepancy directly biases every calibration result.
+#
+# Tip: measure across N squares with one caliper reading, then divide
+# by N. The noise in your caliper distributes over N, so 5-square reads
+# beat 1-square reads.
+
+squares_x: 5            # squares along the long axis
+squares_y: 7            # squares along the short axis
+square_size_m: 0.0297   # measured side of one chess square (m)
+marker_size_m: 0.02225  # measured side of one ArUco marker (m)
+dictionary: DICT_5X5_100
