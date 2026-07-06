@@ -8,8 +8,11 @@
 # by N. The noise in your caliper distributes over N, so 5-square reads
 # beat 1-square reads.
 
-squares_x: 5            # squares along the long axis
-squares_y: 7            # squares along the short axis
-square_size_m: 0.0297   # measured side of one chess square (m)
-marker_size_m: 0.02225  # measured side of one ArUco marker (m)
+name: alum_12x9
+type: charuco
+squares_x: 12
+squares_y: 9
+square_size_m: 0.03
+marker_size_m: 0.0225
 dictionary: DICT_5X5_100
+ 

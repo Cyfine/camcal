@@ -1,0 +1,60 @@
+version: 1
+name: alpha-rig
+board_path: board.yaml
+world_frame: world
+notes: >
+  Example multi-camera rig state. Keep one entry per named camera and update
+  the inline intrinsics/extrinsics snapshots as you recalibrate.
+cameras:
+  - name: front-left
+    enabled: true
+    device:
+      by_id_path: /dev/v4l/by-id/usb-Intel_R__RealSense_TM__Depth_Camera_435i_840412062035-video-index0
+      serial: "840412062035"
+      model: Intel RealSense D415
+    intrinsics:
+      path: realsense_intrinsics.yaml
+      source: realsense_api
+      image_size: [1920, 1080]
+      profile:
+        stream: color
+        format: bgr8
+        fps: 30
+        image_size: [1920, 1080]
+      K:
+        - [1394.0948, 0.0, 972.0273]
+        - [0.0, 1393.0099, 552.2416]
+        - [0.0, 0.0, 1.0]
+      d: [0.0, 0.0, 0.0, 0.0, 0.0]
+    extrinsics:
+      path: extrinsics/front-left.yaml
+      detection_mode: aruco_marker
+      W_T_C:
+        - [1.0, 0.0, 0.0, 0.12]
+        - [0.0, 1.0, 0.0, -0.03]
+        - [0.0, 0.0, 1.0, 0.48]
+        - [0.0, 0.0, 0.0, 1.0]
+      translation_m: [0.12, -0.03, 0.48]
+      quaternion_xyzw: [0.0, 0.0, 0.0, 1.0]
+      reprojection_error_px_mean: 0.31
+      reprojection_error_px_max: 0.55
+  - name: front-right
+    enabled: true
+    device:
+      by_id_path: /dev/v4l/by-id/usb-Intel_R__RealSense_TM__Depth_Camera_435i_840412062037-video-index0
+      serial: "840412062037"
+      model: Intel RealSense D415
+    intrinsics:
+      path: realsense_intrinsics.yaml
+      source: realsense_api
+      image_size: [1920, 1080]
+      profile:
+        stream: color
+        format: bgr8
+        fps: 30
+        image_size: [1920, 1080]
+      K:
+        - [1385.6628, 0.0, 951.1390]
+        - [0.0, 1384.8223, 556.1001]
+        - [0.0, 0.0, 1.0]
+      d: [0.0, 0.0, 0.0, 0.0, 0.0]

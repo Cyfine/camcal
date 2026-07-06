@@ -25,6 +25,8 @@ dev = ["pytest>=8"]
 camcal-intrinsics = "camcal.calibrate_intrinsics:main"
 camcal-extrinsics = "camcal.calibrate_extrinsics:main"
 camcal-list-cameras = "camcal.list_cameras:main"
+camcal-inspect-cameras = "camcal.inspect_cameras:main"
+camcal-export-consumer = "camcal.export_consumer:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

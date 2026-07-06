@@ -18,7 +18,10 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from .aruco import ArucoMarkerDetection
 from .charuco import CharucoBoard, CharucoDetection
+
+TargetDetection = CharucoDetection | ArucoMarkerDetection
 
 KEY_ESC = 27
 KEY_ENTER = 13
@@ -39,10 +42,11 @@ def run_capture_loop(
     *,
     label: str,
     camera: object,
-    board: CharucoBoard,
+    board: CharucoBoard | None,
+    detector: Callable[[np.ndarray], TargetDetection | None] | None = None,
     min_captures: int,
     capture_count: Callable[[], int],
-    on_capture: Callable[[np.ndarray, CharucoDetection], str | None],
+    on_capture: Callable[[np.ndarray, TargetDetection], str | None],
 ) -> LoopResult:
     """Drive the SPACE/ENTER/ESC live loop.
 
@@ -55,13 +59,19 @@ def run_capture_loop(
     last_msg = ""
     warning = ""
     image_size: tuple[int, int] | None = None
+    if detector is None:
+        if board is None:
+            raise ValueError("run_capture_loop requires board when detector is omitted")
+        detect = board.detect_full
+    else:
+        detect = detector
     try:
         while True:
             frame = camera.capture()  # type: ignore[attr-defined]
             if frame is None or frame.size == 0:
                 continue
             image_size = (int(frame.shape[1]), int(frame.shape[0]))
-            detection = board.detect_full(frame)
+            detection = detect(frame)
             n_corners = (
                 int(detection.object_points.shape[0]) if detection else 0
             )

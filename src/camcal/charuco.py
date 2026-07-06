@@ -37,6 +37,15 @@ _DICTS = {
 }
 
 
+def aruco_dictionary(dictionary: str) -> cv2.aruco.Dictionary:
+    """Return an OpenCV ArUco dictionary by canonical name."""
+    if dictionary not in _DICTS:
+        raise ValueError(
+            f"Unknown ArUco dictionary '{dictionary}'. Available: {sorted(_DICTS)}"
+        )
+    return cv2.aruco.getPredefinedDictionary(_DICTS[dictionary])
+
+
 @dataclass
 class CharucoConfig:
     """ChArUco board specification with MEASURED physical dimensions.
@@ -83,11 +92,7 @@ class CharucoConfig:
                 f"square_size_m ({self.square_size_m}); markers must fit "
                 "inside squares with a white border"
             )
-        if self.dictionary not in _DICTS:
-            raise ValueError(
-                f"Unknown ArUco dictionary '{self.dictionary}'. "
-                f"Available: {sorted(_DICTS)}"
-            )
+        aruco_dictionary(self.dictionary)
 
 
 def measured_dim_to_size_m(*, squares: int, measured_m: float) -> float:
@@ -138,7 +143,7 @@ class CharucoBoard:
 
     @classmethod
     def from_config(cls, config: CharucoConfig) -> CharucoBoard:
-        aruco_dict = cv2.aruco.getPredefinedDictionary(_DICTS[config.dictionary])
+        aruco_dict = aruco_dictionary(config.dictionary)
         cv_board = cv2.aruco.CharucoBoard(
             (config.squares_x, config.squares_y),
             config.square_size_m,
@@ -146,7 +151,11 @@ class CharucoBoard:
             aruco_dict,
         )
         cv_detector = cv2.aruco.CharucoDetector(cv_board)
-        return cls(config, cv_board, cv_detector)
+        return cls(
+            config,
+            cv_board,
+            cv_detector,
+        )
 
     # ----- generation -----
 
@@ -218,5 +227,6 @@ __all__ = [
     "CharucoBoard",
     "CharucoConfig",
     "CharucoDetection",
+    "aruco_dictionary",
     "measured_dim_to_size_m",
 ]

@@ -1,0 +1,5 @@
+type: aruco_marker
+dictionary: DICT_5X5_100
+marker_id: 0
+size_m: 0.1975
+origin: center

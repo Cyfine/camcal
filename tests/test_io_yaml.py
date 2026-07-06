@@ -9,6 +9,10 @@ from camcal.io_yaml import (
     load_board,
     load_extrinsics,
     load_intrinsics,
+    load_realsense_intrinsics_bundle,
+    load_target_descriptor,
+    profile_image_size,
+    resolve_intrinsics_file,
     save_extrinsics,
     save_intrinsics,
 )
@@ -111,6 +115,7 @@ def test_extrinsics_round_trip(tmp_path, board_config):
     assert back.board.dictionary == board_config.dictionary
     assert back.n_frames == 3
     assert back.intrinsics_path == "intrinsics.yaml"
+    assert back.detection_mode == "charuco"
     assert back.notes == "extr round-trip"
     assert len(back.per_frame_W_T_C) == 3
     for orig, recovered in zip(per_frame, back.per_frame_W_T_C):
@@ -142,6 +147,46 @@ def test_extrinsics_round_trip_with_camera_block(tmp_path, board_config):
     assert back.camera == camera
 
 
+def test_extrinsics_round_trip_with_aruco_detection_mode(tmp_path, board_config):
+    rec = ExtrinsicsRecord(
+        W_T_C=np.eye(4),
+        board=board_config,
+        n_frames=1,
+        reprojection_error_px_mean=0.2,
+        reprojection_error_px_max=0.4,
+        detection_mode="charuco",
+    )
+    path = tmp_path / "extrinsics.yaml"
+    save_extrinsics(path, rec)
+    back = load_extrinsics(path)
+    assert back.detection_mode == "charuco"
+
+
+def test_extrinsics_round_trip_with_standalone_aruco_target(tmp_path):
+    rec = ExtrinsicsRecord(
+        W_T_C=np.eye(4),
+        n_frames=1,
+        reprojection_error_px_mean=0.2,
+        reprojection_error_px_max=0.4,
+        target={
+            "type": "aruco_marker",
+            "dictionary": "DICT_5X5_100",
+            "marker_id": 7,
+            "size_m": 0.1975,
+            "origin": "center",
+        },
+        detection_mode="aruco_marker",
+    )
+    path = tmp_path / "extrinsics.yaml"
+    save_extrinsics(path, rec)
+    back = load_extrinsics(path)
+    assert back.board is None
+    assert back.target["type"] == "aruco_marker"
+    assert back.target["marker_id"] == 7
+    assert back.target["size_m"] == pytest.approx(0.1975)
+    assert back.detection_mode == "aruco_marker"
+
+
 def test_load_board(tmp_path):
     path = tmp_path / "board.yaml"
     path.write_text(
@@ -154,3 +199,118 @@ def test_load_board(tmp_path):
     assert cfg.squares_y == 7
     assert cfg.square_size_m == pytest.approx(0.030)
     assert cfg.dictionary == "DICT_5X5_100"
+
+
+def test_load_aruco_target_descriptor(tmp_path):
+    path = tmp_path / "aruco.yaml"
+    path.write_text(
+        "type: aruco_marker\n"
+        "dictionary: DICT_5X5_100\n"
+        "marker_id: 7\n"
+        "size_m: 0.1975\n"
+    )
+    target = load_target_descriptor(path)
+    assert target == {
+        "type": "aruco_marker",
+        "dictionary": "DICT_5X5_100",
+        "marker_id": 7,
+        "size_m": 0.1975,
+        "origin": "center",
+    }
+
+
+def test_resolve_intrinsics_file_single_camera_yaml(tmp_path):
+    path = tmp_path / "intrinsics.yaml"
+    save_intrinsics(
+        path,
+        IntrinsicsRecord(
+            K=np.eye(3),
+            d=np.zeros(5),
+            image_size=(640, 480),
+            reprojection_error_px=0.4,
+            n_views=10,
+        ),
+    )
+    record, profile = resolve_intrinsics_file(path)
+    assert profile is None
+    np.testing.assert_allclose(record.K, np.eye(3))
+    assert record.image_size == (640, 480)
+
+
+def test_load_realsense_intrinsics_bundle_and_select_camera(tmp_path):
+    path = tmp_path / "realsense_intrinsics.yaml"
+    path.write_text(
+        "source: realsense_api\n"
+        "created_at: 2026-07-02T20:26:00+08:00\n"
+        "profile:\n"
+        "  stream: color\n"
+        "  format: bgr8\n"
+        "  fps: 30\n"
+        "  image_size: [1920, 1080]\n"
+        "cameras:\n"
+        "  - serial: '840412062035'\n"
+        "    model: Intel RealSense D415\n"
+        "    product_id: 0AD3\n"
+        "    firmware_version: 5.17.0.10\n"
+        "    distortion_model: inverse_brown_conrady\n"
+        "    K:\n"
+        "      - [1394.0, 0.0, 972.0]\n"
+        "      - [0.0, 1393.0, 552.0]\n"
+        "      - [0.0, 0.0, 1.0]\n"
+        "    d: [0.0, 0.0, 0.0, 0.0, 0.0]\n"
+        "  - serial: '840412062037'\n"
+        "    model: Intel RealSense D415\n"
+        "    product_id: 0AD3\n"
+        "    firmware_version: 5.17.0.10\n"
+        "    distortion_model: inverse_brown_conrady\n"
+        "    K:\n"
+        "      - [1385.0, 0.0, 951.0]\n"
+        "      - [0.0, 1384.0, 556.0]\n"
+        "      - [0.0, 0.0, 1.0]\n"
+        "    d: [0.0, 0.0, 0.0, 0.0, 0.0]\n"
+    )
+    bundle = load_realsense_intrinsics_bundle(path)
+    assert bundle.source == "realsense_api"
+    assert profile_image_size(bundle.profile) == (1920, 1080)
+    assert len(bundle.cameras) == 2
+
+    record, profile = resolve_intrinsics_file(path, camera_serial="840412062037")
+    assert profile is not None
+    assert record.source == "realsense_api"
+    assert record.image_size == (1920, 1080)
+    assert record.camera is not None
+    assert record.camera["serial"] == "840412062037"
+    np.testing.assert_allclose(record.K[0, 0], 1385.0)
+
+
+def test_resolve_intrinsics_file_requires_serial_for_multi_camera_bundle(tmp_path):
+    path = tmp_path / "realsense_intrinsics.yaml"
+    path.write_text(
+        "source: realsense_api\n"
+        "profile:\n"
+        "  fps: 30\n"
+        "  image_size: [1920, 1080]\n"
+        "cameras:\n"
+        "  - serial: '1'\n"
+        "    model: Intel RealSense D415\n"
+        "    product_id: 0AD3\n"
+        "    firmware_version: 5.17\n"
+        "    distortion_model: inverse_brown_conrady\n"
+        "    K:\n"
+        "      - [1.0, 0.0, 1.0]\n"
+        "      - [0.0, 1.0, 1.0]\n"
+        "      - [0.0, 0.0, 1.0]\n"
+        "    d: [0, 0, 0, 0, 0]\n"
+        "  - serial: '2'\n"
+        "    model: Intel RealSense D415\n"
+        "    product_id: 0AD3\n"
+        "    firmware_version: 5.17\n"
+        "    distortion_model: inverse_brown_conrady\n"
+        "    K:\n"
+        "      - [1.0, 0.0, 1.0]\n"
+        "      - [0.0, 1.0, 1.0]\n"
+        "      - [0.0, 0.0, 1.0]\n"
+        "    d: [0, 0, 0, 0, 0]\n"
+    )
+    with pytest.raises(ValueError):
+        resolve_intrinsics_file(path)
