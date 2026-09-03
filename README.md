@@ -362,6 +362,85 @@ fleet.upsert_camera(
 save_fleet("fleet.yaml", fleet)
 ```
 
+## Static marker-map fleet calibration
+
+For a fixed workspace where different cameras see overlapping subsets of
+fixed markers, CamCal can jointly solve every observed camera and marker pose.
+Camera intrinsics must already be calibrated at the capture resolution.
+
+Generate the default A3 `DICT_6X6_250` marker set (IDs 0--9):
+
+```bash
+camcal-generate-markers marker_prints
+```
+
+Print every PNG at 100% scale. Measure each outer black square and fill in
+`measured_black_square_side_m` in `marker_prints/markers.yaml`.
+
+Markers 0--3 are fixed in the room. For the current setup, Marker 0 defines the
+room-frame bundle-adjustment gauge. Marker 9 is attached to the movable round
+table; it does not define the room frame. Place Marker 9 face-up, with its
+top-left black-square corner at tabletop center and its printed `+X/+Y` axes
+aligned with table `+X/+Y`. The measured table-to-marker pose is stored in
+`examples/round-table-marker-9.yaml`.
+
+Capture the cameras attached to one host. SPACE retains the current frames and
+detections, ENTER writes the observation file, and ESC/q aborts:
+
+```bash
+camcal-fleet-observe \
+  --fleet fleet.yaml \
+  --markers marker_prints/markers.yaml \
+  --live --camera camera-a --camera camera-c \
+  --out observations-lab.yaml
+```
+
+Static observations from another host can be captured into another YAML and
+copied to the solve machine. No hardware synchronization is required while
+cameras, markers, and the workspace remain fixed. Existing images can also be
+imported without opening cameras:
+
+```bash
+camcal-fleet-observe \
+  --fleet fleet.yaml \
+  --markers marker_prints/markers.yaml \
+  --images 'camera-a=captures/camera-a/*.png' \
+  --images 'camera-c=captures/camera-c/*.png' \
+  --out observations-files.yaml
+```
+
+Solve all observation files together:
+
+```bash
+camcal-fleet-solve \
+  --fleet fleet.yaml \
+  --markers marker_prints/markers.yaml \
+  --observations observations-lab.yaml observations-d415.yaml \
+  --room-anchor-marker-id 0 \
+  --room-structure examples/msiws-room-structure.yaml \
+  --table-marker-id 9 \
+  --table-marker-pose examples/round-table-marker-9.yaml \
+  --out fleet-calibration.yaml
+```
+
+The solve rejects a disconnected camera--marker graph and names its separate
+components. A `SOLVED` run writes the calibrated fleet, but does not claim an
+accepted physical accuracy. Inspect residual overlays and the 3D layout before
+using its extrinsics:
+
+- `fleet-calibration.yaml`: room-frame poses at top level (`W_T_C` and `W_T_M`,
+  with `W = aruco_marker_0`), plus the recovered table pose
+  `cad_table_frame.R_T_T` and each camera pose
+  `cad_table_frame.cameras.<name>.T_T_C`. The composition is
+  `R_T_T = R_T_M9 inv(T_T_M9)` and `T_T_C = inv(R_T_T) R_T_C`.
+- `fleet-calibration_fleet.yaml`: a fleet copy with `world_frame: cad_table` and
+  table-frame camera poses, consumable by the existing two-camera exporter.
+- `fleet-calibration.html`: self-contained interactive camera-frustum, marker,
+  world-axis, and residual review.
+- `fleet-calibration_residual_overlays/`: observed corners, predicted corners,
+  and pixel residual vectors on retained source images when those images are
+  accessible on the solve host.
+
 ## Consumer Export
 
 The current downstream consumer described in the referenced guide expects a

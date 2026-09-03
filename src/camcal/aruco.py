@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 
 from .charuco import aruco_dictionary
+from .marker_map import MarkerManifest
 
 
 @dataclass(frozen=True)
@@ -56,16 +57,7 @@ class ArucoMarkerTarget:
     def __init__(self, config: ArucoMarkerConfig) -> None:
         self.config = config
         self.detector = cv2.aruco.ArucoDetector(aruco_dictionary(config.dictionary))
-        half = float(config.size_m) / 2.0
-        self.object_points = np.asarray(
-            [
-                [-half, half, 0.0],
-                [half, half, 0.0],
-                [half, -half, 0.0],
-                [-half, -half, 0.0],
-            ],
-            dtype=np.float64,
-        )
+        self.object_points = square_object_points(config.size_m)
 
     def detect(self, image: np.ndarray) -> ArucoMarkerDetection | None:
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
@@ -86,4 +78,70 @@ class ArucoMarkerTarget:
         return None
 
 
-__all__ = ["ArucoMarkerConfig", "ArucoMarkerDetection", "ArucoMarkerTarget"]
+class ArucoMultiMarkerDetector:
+    """Detect every configured marker visible in an image.
+
+    Unknown dictionary IDs are ignored.  Results are sorted by marker ID and
+    each marker's four image corners retain OpenCV order: top-left, top-right,
+    bottom-right, bottom-left in the marker's canonical orientation.
+    """
+
+    def __init__(self, manifest: MarkerManifest) -> None:
+        self.manifest = manifest
+        parameters = cv2.aruco.DetectorParameters()
+        parameters.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+        self.detector = cv2.aruco.ArucoDetector(
+            aruco_dictionary(manifest.dictionary),
+            parameters,
+        )
+        self._markers = manifest.by_id
+
+    def detect(self, image: np.ndarray) -> tuple[ArucoMarkerDetection, ...]:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+        marker_corners, marker_ids, _ = self.detector.detectMarkers(gray)
+        if marker_ids is None or not marker_corners:
+            return ()
+
+        detections: list[ArucoMarkerDetection] = []
+        ids = np.asarray(marker_ids, dtype=np.int32).reshape(-1)
+        for corners, marker_id_raw in zip(marker_corners, ids, strict=True):
+            marker_id = int(marker_id_raw)
+            marker = self._markers.get(marker_id)
+            if marker is None:
+                continue
+            detections.append(
+                ArucoMarkerDetection(
+                    object_points=square_object_points(marker.side_length_m),
+                    image_points=np.asarray(corners, dtype=np.float64).reshape(4, 2),
+                    marker_id=marker_id,
+                )
+            )
+        detections.sort(key=lambda detection: detection.marker_id)
+        return tuple(detections)
+
+
+def square_object_points(side_length_m: float) -> np.ndarray:
+    """Return square corners in OpenCV ``SOLVEPNP_IPPE_SQUARE`` order."""
+    if not np.isfinite(side_length_m) or side_length_m <= 0:
+        raise ValueError(
+            f"side_length_m must be positive and finite, got {side_length_m}"
+        )
+    half = float(side_length_m) / 2.0
+    return np.asarray(
+        [
+            [-half, half, 0.0],
+            [half, half, 0.0],
+            [half, -half, 0.0],
+            [-half, -half, 0.0],
+        ],
+        dtype=np.float64,
+    )
+
+
+__all__ = [
+    "ArucoMarkerConfig",
+    "ArucoMarkerDetection",
+    "ArucoMarkerTarget",
+    "ArucoMultiMarkerDetector",
+    "square_object_points",
+]

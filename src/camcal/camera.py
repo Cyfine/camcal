@@ -15,6 +15,7 @@ import numpy as np
 
 # How long to wait for a single frame before retrying once.
 _FRAME_TIMEOUT_S = 2.0
+_REALSENSE_FRAME_TIMEOUT_MS = 5000
 # Brief warm-up: many UVC cameras return black or stale frames for the
 # first few reads while exposure converges.
 _WARMUP_FRAMES = 5
@@ -145,4 +146,89 @@ class Camera:
         return w, h
 
 
-__all__ = ["Camera", "CameraError", "parse_device"]
+class RealSenseCamera:
+    """Capture one Intel RealSense color stream through librealsense."""
+
+    def __init__(
+        self,
+        *,
+        serial: str,
+        width: int,
+        height: int,
+        fps: int,
+    ) -> None:
+        self._serial = str(serial)
+        self._width = int(width)
+        self._height = int(height)
+        self._fps = int(fps)
+        self._pipeline = None
+
+    def connect(self) -> None:
+        if self._pipeline is not None:
+            return
+        try:
+            import pyrealsense2 as rs
+        except ImportError as exc:
+            raise CameraError(
+                "RealSense capture requires pyrealsense2; install the camcal "
+                "realsense extra"
+            ) from exc
+        pipeline = rs.pipeline()
+        config = rs.config()
+        config.enable_device(self._serial)
+        config.enable_stream(
+            rs.stream.color,
+            self._width,
+            self._height,
+            rs.format.bgr8,
+            self._fps,
+        )
+        try:
+            pipeline.start(config)
+            for _ in range(_WARMUP_FRAMES):
+                pipeline.wait_for_frames(timeout_ms=_REALSENSE_FRAME_TIMEOUT_MS)
+        except Exception as exc:
+            try:
+                pipeline.stop()
+            except Exception:
+                pass
+            raise CameraError(
+                f"could not start RealSense {self._serial} color stream "
+                f"at {self._width}x{self._height}@{self._fps}: {exc}"
+            ) from exc
+        self._pipeline = pipeline
+
+    def disconnect(self) -> None:
+        if self._pipeline is not None:
+            self._pipeline.stop()
+            self._pipeline = None
+
+    def capture(self) -> np.ndarray:
+        if self._pipeline is None:
+            raise CameraError("camera is not connected; call connect() first")
+        try:
+            frames = self._pipeline.wait_for_frames(
+                timeout_ms=_REALSENSE_FRAME_TIMEOUT_MS
+            )
+        except Exception as exc:
+            raise CameraError(
+                f"capture failed on RealSense {self._serial}: {exc}"
+            ) from exc
+        color = frames.get_color_frame()
+        if not color:
+            raise CameraError(f"RealSense {self._serial} returned no color frame")
+        frame = np.asanyarray(color.get_data())
+        if frame.shape != (self._height, self._width, 3):
+            raise CameraError(
+                f"RealSense {self._serial} returned frame shape {frame.shape}, "
+                f"expected {(self._height, self._width, 3)}"
+            )
+        return frame.copy()
+
+    def image_size(self) -> tuple[int, int]:
+        if self._pipeline is None:
+            raise CameraError("camera is not connected; call connect() first")
+        return self._width, self._height
+
+
+__all__ = ["Camera", "CameraError", "RealSenseCamera", "parse_device"]
