@@ -14,12 +14,16 @@ authors = [{ name = "Cyfine" }]
 dependencies = [
     "numpy>=1.24",
     "opencv-contrib-python>=4.8",
+    "plotly>=5.24",
     "pyyaml>=6",
     "scipy>=1.10",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+realsense = [
+    "pyrealsense2==2.58.1.10581",
+]
 
 [project.scripts]
 camcal-intrinsics = "camcal.calibrate_intrinsics:main"
@@ -27,6 +31,9 @@ camcal-extrinsics = "camcal.calibrate_extrinsics:main"
 camcal-list-cameras = "camcal.list_cameras:main"
 camcal-inspect-cameras = "camcal.inspect_cameras:main"
 camcal-export-consumer = "camcal.export_consumer:main"
+camcal-generate-markers = "camcal.generate_markers:main"
+camcal-fleet-observe = "camcal.observe_fleet:main"
+camcal-fleet-solve = "camcal.calibrate_fleet:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

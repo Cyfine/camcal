@@ -1,0 +1,8 @@
+# Known pose of Marker 9 in the CAD table frame.
+# Marker 9 is face-up; its black-square top-left corner is at tabletop center.
+# Its +x/+y axes align with table +x/+y. Units are metres.
+T_T_M:
+  - [1.0, 0.0, 0.0, 0.1186]
+  - [0.0, 1.0, 0.0, -0.1186]
+  - [0.0, 0.0, 1.0, 0.75]
+  - [0.0, 0.0, 0.0, 1.0]
