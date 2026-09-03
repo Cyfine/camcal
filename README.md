@@ -290,6 +290,26 @@ Repeat per camera. All cameras you measure against the same physically-placed
 target end up expressed in a common world frame, with no need for them to see
 each other directly.
 
+If the target must be handheld, use the stereo one-shot command instead of
+calibrating the cameras sequentially. It reads both cameras concurrently and
+accepts one pair only when the same marker is visible in both images:
+
+```bash
+camcal-stereo-extrinsics \
+  --device-0 /dev/v4l/by-path/...camera0...-video-index0 \
+  --device-1 /dev/v4l/by-path/...camera1...-video-index0 \
+  --intrinsics-0 cam0_intrinsics.yaml \
+  --intrinsics-1 cam1_intrinsics.yaml \
+  --aruco-dictionary DICT_4X4_50 --aruco-marker-id 1 \
+  --aruco-size-mm 194 \
+  --width 1920 --height 1080 --fps 30 \
+  --out-0 cam0_extrinsics.yaml --out-1 cam1_extrinsics.yaml
+```
+
+Hold the marker still and press `SPACE` once. Ordinary UVC cameras are not
+hardware synchronized, so this minimizes software capture skew but does not
+claim identical exposure timestamps.
+
 ## Loading results in Python
 
 ```python

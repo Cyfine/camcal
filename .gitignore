@@ -5,3 +5,11 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+.idea/
+
+# Machine- and placement-specific calibration outputs.
+/creative_live.yaml
+/extrinsics/
+/intrinsics/
+/realsense_extrinsics/
+/realsense_intrinsics.yaml

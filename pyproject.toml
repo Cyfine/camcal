@@ -24,6 +24,7 @@ dev = ["pytest>=8"]
 [project.scripts]
 camcal-intrinsics = "camcal.calibrate_intrinsics:main"
 camcal-extrinsics = "camcal.calibrate_extrinsics:main"
+camcal-stereo-extrinsics = "camcal.calibrate_stereo_extrinsics:main"
 camcal-list-cameras = "camcal.list_cameras:main"
 camcal-inspect-cameras = "camcal.inspect_cameras:main"
 camcal-export-consumer = "camcal.export_consumer:main"
