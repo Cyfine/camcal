@@ -16,6 +16,20 @@ import numpy as np
 # How long to wait for a single frame before retrying once.
 _FRAME_TIMEOUT_S = 2.0
 _REALSENSE_FRAME_TIMEOUT_MS = 5000
+
+
+def _read(cap: cv2.VideoCapture) -> tuple[bool, np.ndarray | None]:
+    """Read one frame; an undecodable frame counts as a failed read.
+
+    OpenCV 5 raises from ``read()`` when a UVC camera delivers an empty MJPG
+    buffer, where OpenCV 4 returned ``ok=False``.
+    """
+    try:
+        return cap.read()
+    except cv2.error:
+        return False, None
+
+
 # Brief warm-up: many UVC cameras return black or stale frames for the
 # first few reads while exposure converges.
 _WARMUP_FRAMES = 5
@@ -97,7 +111,7 @@ class Camera:
         cap.set(cv2.CAP_PROP_FPS, self._fps)
         self._cap = cap
         for _ in range(_WARMUP_FRAMES):
-            cap.read()
+            _read(cap)
 
     def disconnect(self) -> None:
         if self._cap is not None:
@@ -121,14 +135,14 @@ class Camera:
         last_ok = False
         last_frame: np.ndarray | None = None
         while time.monotonic() < deadline:
-            ok, frame = self._cap.read()
+            ok, frame = _read(self._cap)
             if ok and frame is not None and frame.size > 0:
                 last_ok, last_frame = True, frame
                 break
         if not last_ok or last_frame is None:
             self.disconnect()
             self.connect()
-            ok, frame = self._cap.read() if self._cap is not None else (False, None)
+            ok, frame = _read(self._cap) if self._cap is not None else (False, None)
             if not ok or frame is None:
                 raise CameraError(
                     f"capture failed on device {self._device!r} "
