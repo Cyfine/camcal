@@ -35,6 +35,8 @@ camcal-export-consumer = "camcal.export_consumer:main"
 camcal-generate-markers = "camcal.generate_markers:main"
 camcal-fleet-observe = "camcal.observe_fleet:main"
 camcal-fleet-solve = "camcal.calibrate_fleet:main"
+camcal-board-observe = "camcal.observe_board:main"
+camcal-board-solve = "camcal.calibrate_board_fleet:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

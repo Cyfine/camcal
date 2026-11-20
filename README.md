@@ -441,6 +441,64 @@ using its extrinsics:
   and pixel residual vectors on retained source images when those images are
   accessible on the solve host.
 
+## Moving-board fleet calibration
+
+Where no markers can be fixed to walls, one large ChArUco board carried
+through the shared field of view calibrates the fleet. The cameras stay fixed;
+each capture is one static board pose, seen at the same instant by any subset
+of the cameras. A bundle adjustment solves every camera pose, every board pose
+and, optionally, some cameras' intrinsics (pinhole plus k1, k2, p1, p2, k3).
+UVC cameras are not synchronised: hold the board still for each capture.
+
+Capture:
+
+```bash
+camcal-board-observe --fleet fleet.yaml --board board.yaml --out observations.yaml
+```
+
+| Key | Capture |
+| --- | --- |
+| SPACE | `solve`: used by the bundle adjustment |
+| W | `world`: used, and defines the world; lay the board face up on the floor |
+| V | `validation`: kept out of the solve, used to check it |
+| U | undo the last capture |
+| ENTER / ESC | save / abort |
+
+Each tile shows the corners detected now and, as dots, every corner captured
+so far, with a coarse image-coverage figure. Intrinsics need corners near the
+image edges and tilted views; extrinsics need captures shared by camera pairs
+(the status bar counts them).
+
+Full calibration (the world capture fixes the world; its origin is the
+board's outer corner and z points out of the printed face):
+
+```bash
+camcal-board-solve --fleet fleet.yaml --observations observations.yaml \
+  --free-intrinsics camera-a --free-intrinsics camera-c \
+  --out result.yaml --out-fleet fleet-calibrated.yaml
+```
+
+Cameras that are not `--free-intrinsics` keep the fleet's intrinsics. The
+result reports, per camera, views, image coverage, residuals and, for re-
+estimated intrinsics, how far a viewing ray moved from the prior within the
+covered image; validation captures report a leave-one-camera-out transfer
+error in pixels and in millimetres at the board.
+
+After a bump, a few captures suffice. `--check` reports which camera moved:
+with the current calibration each camera's pose is freed in turn, and the
+camera whose freeing brings every camera's error down is the one that moved.
+An error that stays high whichever pose is freed points to changed intrinsics
+or to several moved cameras; run a full calibration then.
+
+```bash
+camcal-board-solve --fleet fleet.yaml --observations quick.yaml --out check.yaml --check
+camcal-board-solve --fleet fleet.yaml --observations quick.yaml \
+  --fix-pose camera-a --fix-pose d415 --out bumped.yaml --out-fleet fleet-calibrated.yaml
+```
+
+Fixing the cameras that did not move keeps the world they define, so nothing
+downstream changes.
+
 ## Consumer Export
 
 The current downstream consumer described in the referenced guide expects a
@@ -486,6 +544,7 @@ squares_y: 7
 square_size_m: 0.0297          # caliper-measured side of one chess square
 marker_size_m: 0.02225         # caliper-measured side of one ArUco marker
 dictionary: DICT_5X5_100
+legacy_pattern: false          # true for boards in the pre-4.6 OpenCV layout
 ```
 
 ### `intrinsics.yaml` — Zhang's-method output

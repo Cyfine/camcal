@@ -327,6 +327,7 @@ def load_board(path: str | Path) -> CharucoConfig:
         square_size_m=float(raw["square_size_m"]),
         marker_size_m=float(raw["marker_size_m"]),
         dictionary=str(raw.get("dictionary", "DICT_5X5_100")),
+        legacy_pattern=bool(raw.get("legacy_pattern", False)),
     )
 
 
@@ -350,6 +351,7 @@ def load_target_descriptor(path: str | Path) -> dict[str, Any]:
             square_size_m=float(raw["square_size_m"]),
             marker_size_m=float(raw["marker_size_m"]),
             dictionary=str(raw.get("dictionary", "DICT_5X5_100")),
+            legacy_pattern=bool(raw.get("legacy_pattern", False)),
         )
         return _target_from_board(board)
     if target_type == "aruco_marker":
@@ -388,6 +390,7 @@ def _board_to_dict(board: CharucoConfig) -> dict[str, Any]:
         "square_size_m": float(board.square_size_m),
         "marker_size_m": float(board.marker_size_m),
         "dictionary": str(board.dictionary),
+        "legacy_pattern": bool(board.legacy_pattern),
     }
 
 
@@ -410,6 +413,7 @@ def _board_from_extrinsics_raw(raw: dict[str, Any]) -> CharucoConfig | None:
         square_size_m=float(board_raw["square_size_m"]),
         marker_size_m=float(board_raw["marker_size_m"]),
         dictionary=str(board_raw.get("dictionary", "DICT_5X5_100")),
+        legacy_pattern=bool(board_raw.get("legacy_pattern", False)),
     )
 
 

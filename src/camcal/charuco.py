@@ -64,6 +64,11 @@ class CharucoConfig:
     dictionary
         OpenCV ArUco dictionary name (e.g., ``DICT_5X5_100``). Must match
         the dictionary used to render the printed board.
+    legacy_pattern
+        Whether the board uses the layout of OpenCV before 4.6. The two
+        layouts differ only when ``squares_y`` is even; boards from some
+        generators (calib.io among them) use the legacy one. A board with
+        the wrong layout yields no ChArUco corners at all.
     """
 
     squares_x: int
@@ -71,6 +76,7 @@ class CharucoConfig:
     square_size_m: float
     marker_size_m: float
     dictionary: str = "DICT_5X5_100"
+    legacy_pattern: bool = False
 
     def __post_init__(self) -> None:
         if self.squares_x <= 0 or self.squares_y <= 0:
@@ -150,6 +156,8 @@ class CharucoBoard:
             config.marker_size_m,
             aruco_dict,
         )
+        # Set before the detector is built: the detector keeps its own board.
+        cv_board.setLegacyPattern(bool(config.legacy_pattern))
         cv_detector = cv2.aruco.CharucoDetector(cv_board)
         return cls(
             config,
