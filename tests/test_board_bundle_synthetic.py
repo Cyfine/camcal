@@ -273,3 +273,29 @@ def test_cli_full_check_and_bumped(tmp_path):
     bumped = load_fleet(bumped_fleet)
     assert bumped.world_frame == "board_world"
     assert np.allclose(bumped.get_camera("a").extrinsics.W_T_C, a.extrinsics.W_T_C)
+
+
+def test_auto_capture_takes_only_new_views():
+    from camcal.charuco import CharucoDetection
+    from camcal.observe_board import AutoSettings, View, corner_motion_px, is_new_view
+
+    settings = AutoSettings()
+    first = View(np.array([960.0, 540.0]), np.eye(3), 2.0)
+    same = View(np.array([970.0, 545.0]), Rotation.from_euler("x", 3, degrees=True).as_matrix(), 2.05)
+    shifted = View(np.array([1400.0, 540.0]), np.eye(3), 2.0)
+    tilted = View(np.array([960.0, 540.0]), Rotation.from_euler("y", 25, degrees=True).as_matrix(), 2.0)
+    closer = View(np.array([960.0, 540.0]), np.eye(3), 1.4)
+    assert is_new_view(first, [], 1920, settings)
+    assert not is_new_view(same, [first], 1920, settings)
+    for view in (shifted, tilted, closer):
+        assert is_new_view(view, [first], 1920, settings)
+    assert not is_new_view(shifted, [first, shifted], 1920, settings)
+
+    ids = np.arange(10)
+    points = np.column_stack((np.arange(10.0) * 50, np.zeros(10)))
+    still = CharucoDetection(np.zeros((10, 3)), points + 0.2, ids)
+    moved = CharucoDetection(np.zeros((10, 3)), points + 5.0, ids)
+    base = CharucoDetection(np.zeros((10, 3)), points, ids)
+    assert corner_motion_px(base, still) < settings.still_px
+    assert corner_motion_px(base, moved) > settings.still_px
+    assert corner_motion_px(None, still) == float("inf")

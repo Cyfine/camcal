@@ -464,8 +464,18 @@ camcal-board-observe --fleet fleet.yaml --board board.yaml --out observations.ya
 | U | undo the last capture |
 | ENTER / ESC | save / abort |
 
-Each tile shows the corners detected now and, as dots, every corner captured
-so far, with a coarse image-coverage figure. Intrinsics need corners near the
+`--auto` (or key A) lets one person calibrate alone. A capture is taken when
+the board has been still in every camera that sees it (`--still-s`,
+`--still-px`), and only when it shows at least one camera a view unlike all
+its earlier ones: the board centre moved by `--new-centre-fraction` of the
+image width, the tilt changed by `--new-tilt-deg`, or the distance by
+`--new-distance-fraction`. Holding the board in one place gives one capture.
+A shutter sound and a flash of the window border mark each capture. In auto
+mode W arms the next still pose, after the board has moved, as the world
+capture; V switches later captures between solve and validation.
+
+Each tile shows the corners detected now (orange while moving) and, as dots,
+every corner captured so far, with a coarse image-coverage figure. Intrinsics need corners near the
 image edges and tilted views; extrinsics need captures shared by camera pairs
 (the status bar counts them).
 
