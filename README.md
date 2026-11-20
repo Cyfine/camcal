@@ -465,8 +465,9 @@ camcal-board-observe --fleet fleet.yaml --board board.yaml --out observations.ya
 | ENTER / ESC | save / abort |
 
 `--auto` (or key A) lets one person calibrate alone. A capture is taken when
-the board has been still in every camera that sees it (`--still-s`,
-`--still-px`), and only when it shows at least one camera a view unlike all
+the board has been steady in every camera that sees it (corners slower than
+`--still-px-per-s`, default 15 px/s, for `--still-s`, default 0.3 s; a hand
+holding the board is steady enough), and only when it shows at least one camera a view unlike all
 its earlier ones: the board centre moved by `--new-centre-fraction` of the
 image width, the tilt changed by `--new-tilt-deg`, or the distance by
 `--new-distance-fraction`. Holding the board in one place gives one capture.

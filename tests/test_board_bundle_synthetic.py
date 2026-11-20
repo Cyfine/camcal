@@ -296,6 +296,7 @@ def test_auto_capture_takes_only_new_views():
     still = CharucoDetection(np.zeros((10, 3)), points + 0.2, ids)
     moved = CharucoDetection(np.zeros((10, 3)), points + 5.0, ids)
     base = CharucoDetection(np.zeros((10, 3)), points, ids)
-    assert corner_motion_px(base, still) < settings.still_px
-    assert corner_motion_px(base, moved) > settings.still_px
+    # One loop iteration of about 0.1 s.
+    assert corner_motion_px(base, still) < settings.still_px_per_s * 0.1
+    assert corner_motion_px(base, moved) > settings.still_px_per_s * 0.1
     assert corner_motion_px(None, still) == float("inf")

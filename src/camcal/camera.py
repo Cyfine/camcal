@@ -109,6 +109,8 @@ class Camera:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
         cap.set(cv2.CAP_PROP_FPS, self._fps)
+        # Keep only the newest frame queued, so a read returns the present, not a stale buffer.
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._cap = cap
         for _ in range(_WARMUP_FRAMES):
             _read(cap)
@@ -150,6 +152,31 @@ class Camera:
                 )
             last_frame = frame
         return last_frame
+
+    def grab(self) -> bool:
+        """Take the current frame without decoding it; pair with :meth:`retrieve`.
+
+        Grabbing every camera first and decoding afterwards keeps the frames of a
+        multi-camera capture as close in time as unsynchronised cameras allow.
+        """
+        if self._cap is None:
+            raise CameraError("camera is not connected; call connect() first")
+        try:
+            return bool(self._cap.grab())
+        except cv2.error:
+            return False
+
+    def retrieve(self) -> np.ndarray:
+        """Decode the frame taken by :meth:`grab`, or read a new one if that failed."""
+        if self._cap is None:
+            raise CameraError("camera is not connected; call connect() first")
+        try:
+            ok, frame = self._cap.retrieve()
+        except cv2.error:
+            ok, frame = False, None
+        if ok and frame is not None and frame.size > 0:
+            return frame
+        return self.capture()
 
     def image_size(self) -> tuple[int, int]:
         """Return ``(width, height)`` actually reported by the driver."""
@@ -238,6 +265,15 @@ class RealSenseCamera:
                 f"expected {(self._height, self._width, 3)}"
             )
         return frame.copy()
+
+    def grab(self) -> bool:
+        """Take the next colour frame now; :meth:`retrieve` returns it."""
+        self._grabbed = self.capture()
+        return True
+
+    def retrieve(self) -> np.ndarray:
+        frame, self._grabbed = getattr(self, "_grabbed", None), None
+        return frame if frame is not None else self.capture()
 
     def image_size(self) -> tuple[int, int]:
         if self._pipeline is None:

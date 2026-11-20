@@ -9,7 +9,7 @@ floor), V validation capture, U undo the last capture, ENTER save, ESC or q
 abort.
 
 Auto capture (``--auto`` or key A) lets one person calibrate alone. A capture
-is taken when the board has been still in every camera that sees it, and only
+is taken when the board has been steady in every camera that sees it, and only
 when it shows at least one camera a view unlike its earlier ones: the board
 centre elsewhere in the image, a different tilt, or a different distance.
 Holding the board in one place therefore yields one capture, not a stream of
@@ -22,6 +22,7 @@ validation.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import combinations
@@ -60,8 +61,11 @@ FLASH_S = 0.4
 class AutoSettings:
     """When a still board is captured automatically."""
 
-    still_s: float = 0.8
-    still_px: float = 0.5
+    # Steady: corners slower than still_px_per_s for still_s. The cameras are not
+    # synchronised; their frames can be up to one frame period (33 ms) apart, so
+    # 15 px/s costs at most about 0.5 px of disagreement between cameras.
+    still_s: float = 0.3
+    still_px_per_s: float = 15.0
     new_centre_fraction: float = 0.15
     new_tilt_deg: float = 15.0
     new_distance_fraction: float = 0.2
@@ -85,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--auto", action="store_true", help="Start with auto capture on")
     defaults = AutoSettings()
     parser.add_argument("--still-s", type=float, default=defaults.still_s)
-    parser.add_argument("--still-px", type=float, default=defaults.still_px)
+    parser.add_argument("--still-px-per-s", type=float, default=defaults.still_px_per_s)
     parser.add_argument("--new-centre-fraction", type=float, default=defaults.new_centre_fraction)
     parser.add_argument("--new-tilt-deg", type=float, default=defaults.new_tilt_deg)
     parser.add_argument("--new-distance-fraction", type=float, default=defaults.new_distance_fraction)
@@ -110,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             auto=args.auto,
             settings=AutoSettings(
                 args.still_s,
-                args.still_px,
+                args.still_px_per_s,
                 args.new_centre_fraction,
                 args.new_tilt_deg,
                 args.new_distance_fraction,
@@ -203,13 +207,18 @@ def observe_live(
         # World arming: None, "waiting" (for the board to move or vanish first), "ready".
         auto_role, world_armed = "solve", None
         flash_until, message = 0.0, ""
+        previous_time = time.monotonic()
+        grabber = ThreadPoolExecutor(max_workers=len(cameras))
         while True:
-            frames = {name: cameras[name].capture() for name in by_name}
-            detections = {name: board.detect_full(frame) for name, frame in frames.items()}
+            # Grab every camera at once, then decode: frames as close in time as possible.
+            list(grabber.map(lambda name: cameras[name].grab(), by_name))
             now = time.monotonic()
+            frames = {name: cameras[name].retrieve() for name in by_name}
+            detections = {name: board.detect_full(frame) for name, frame in frames.items()}
             seen = {name: detection for name, detection in detections.items() if detection is not None}
-            moving = [name for name, detection in seen.items() if corner_motion_px(previous[name], detection) > settings.still_px]
-            previous = detections
+            limit_px = settings.still_px_per_s * max(now - previous_time, 1e-3)
+            moving = [name for name, detection in seen.items() if corner_motion_px(previous[name], detection) > limit_px]
+            previous, previous_time = detections, now
             still_since = None if (not seen or moving) else (still_since or now)
             still_for = 0.0 if still_since is None else now - still_since
             if world_armed == "waiting" and (not seen or moving):
