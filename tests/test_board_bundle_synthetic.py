@@ -358,3 +358,18 @@ def test_camera_whose_only_views_are_left_out_is_not_linked():
     with pytest.raises(ValueError, match="not linked"):
         solve_board_bundle(dataset, free_intrinsics=["a", "c"])
 
+
+def test_huber_solve_converges_from_a_start_with_most_corners_past_the_knee():
+    # Cameras 1-3 cm off: most corners start well past the 2 px knee. scipy's own Huber model
+    # gives those corners no curvature, and the solve used to stop near its start at ~6 px.
+    dataset, _ = make_dataset(np.random.default_rng(3), solve=30, validation=0)
+    start = {}
+    for k, (name, truth) in enumerate(TRUE_POSES.items(), start=1):
+        error = se3.from_Rt(
+            Rotation.from_euler("xyz", [0.3, -0.3, 0.3 * k], degrees=True).as_matrix(), np.array([0.01, -0.01, 0.01 * k])
+        )
+        start[name] = se3.compose(truth, error)
+    result = solve_board_bundle(dataset, free_intrinsics=["a", "c"], initial_poses=start, loss="huber", f_scale_px=2.0)
+    for name, truth in TRUE_POSES.items():
+        assert se3.translation_distance(result.W_T_C[name], truth) < 0.006, name
+    assert max(stats.rmse_px for stats in result.camera_stats.values()) < 0.4

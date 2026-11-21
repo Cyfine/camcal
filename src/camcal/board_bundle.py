@@ -179,7 +179,7 @@ def solve_board_bundle(
         x0,
         jac_sparsity=problem.sparsity(),
         method="trf",
-        loss=loss,
+        loss=_gauss_newton_loss(loss),
         f_scale=float(f_scale_px),
         x_scale="jac",
         max_nfev=int(max_evaluations),
@@ -534,6 +534,42 @@ def _board_pose(observations, corners, K, d, W_T_C) -> np.ndarray:
         return np.concatenate(out).ravel()
 
     return _pose_matrix(least_squares(residuals, _pose_vector(initial), method="lm").x)
+
+
+# ----- robust loss -----
+
+# rho(z) and rho'(z) of scipy's robust losses, z being the squared residual over f_scale squared.
+_LOSSES = {
+    "huber": (
+        lambda z: np.where(z <= 1.0, z, 2.0 * np.sqrt(np.maximum(z, 1.0)) - 1.0),
+        lambda z: 1.0 / np.sqrt(np.maximum(z, 1.0)),
+    ),
+    "soft_l1": (lambda z: 2.0 * (np.sqrt(1.0 + z) - 1.0), lambda z: 1.0 / np.sqrt(1.0 + z)),
+    "cauchy": (np.log1p, lambda z: 1.0 / (1.0 + z)),
+    "arctan": (np.arctan, lambda z: 1.0 / (1.0 + z * z)),
+}
+
+
+def _gauss_newton_loss(name: str):
+    """scipy's robust loss, with each residual's model curvature taken from its weight rho'.
+
+    scipy weights each residual's row of the Gauss-Newton model by rho' + 2 rho'' z (Triggs'
+    correction). Past Huber's knee that weight is exactly zero (for Cauchy and arctan it turns
+    negative and scipy clamps it to zero), so every corner past the knee drops out of the
+    model. When most corners start past the knee the model is nearly flat, the trust region
+    shrinks, and the step tolerance ends the solve near its start. With rho'' given as zero
+    the model is that of reweighted least squares; the cost and gradient stay exact.
+    """
+    if name == "linear":
+        return name
+    if name not in _LOSSES:
+        raise ValueError(f"unsupported robust loss {name!r}; use linear or one of {sorted(_LOSSES)}")
+    rho, weight = _LOSSES[name]
+
+    def loss(z: np.ndarray) -> np.ndarray:
+        return np.stack((rho(z), weight(z), np.zeros_like(z)))
+
+    return loss
 
 
 # ----- geometry -----
