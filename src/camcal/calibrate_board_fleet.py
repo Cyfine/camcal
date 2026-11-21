@@ -135,9 +135,14 @@ def _current_poses(fleet: CameraFleetRecord) -> dict[str, np.ndarray]:
 
 def _solve_report(dataset: BoardObservationDataset, result) -> dict:
     snapshots = {camera.name: camera for camera in dataset.cameras}
+    left_out = {(view.camera_name, view.capture_id) for view in result.dropped_views}
     cameras = {}
     for name in sorted(result.W_T_C):
-        seen = [obs for obs in dataset.observations if obs.camera_name == name and obs.capture_id in result.W_T_B]
+        seen = [
+            obs
+            for obs in dataset.observations
+            if obs.camera_name == name and obs.capture_id in result.W_T_B and (name, obs.capture_id) not in left_out
+        ]
         points = np.concatenate([obs.image_points for obs in seen]) if seen else np.zeros((0, 2))
         quaternion, translation = se3.to_quat_t(result.W_T_C[name])
         entry = {
@@ -170,6 +175,7 @@ def _solve_report(dataset: BoardObservationDataset, result) -> dict:
         "message": result.message,
         "evaluations": result.evaluations,
         "captures": len(result.W_T_B),
+        "dropped_views": [view.as_dict() for view in result.dropped_views],
         "cameras": cameras,
         "board_poses": {capture: T.tolist() for capture, T in sorted(result.W_T_B.items())},
         "capture_rmse_px": {f"{camera}/{capture}": value for (camera, capture), value in sorted(result.observation_rmse_px.items())},
@@ -206,8 +212,16 @@ def _calibrated_fleet(fleet: CameraFleetRecord, result, *, world_frame: str | No
     return replace(fleet, cameras=cameras, world_frame=world_frame or fleet.world_frame)
 
 
+def _dropped_text(views: list[dict]) -> list[str]:
+    return [
+        f"  left out {view['camera']} {view['capture']}: its {view['corners']} corners do not fix the board pose"
+        for view in views
+    ]
+
+
 def _diagnosis_text(diagnosis: dict) -> str:
     lines = ["", "Current calibration against these captures (board poses solved, cameras fixed):"]
+    lines += _dropped_text(diagnosis["dropped_views"])
     for name, stats in sorted(diagnosis["baseline"].items()):
         lines.append(f"  {name:<14} rmse {stats['rmse_px']:6.2f} px  max {stats['max_px']:6.2f} px")
     lines.append(f"  all cameras    rmse {diagnosis['baseline_rmse_px']:6.2f} px")
@@ -226,6 +240,7 @@ def _diagnosis_text(diagnosis: dict) -> str:
 
 def _solve_text(solve: dict, validation: list[dict]) -> str:
     lines = ["", f"Bundle adjustment ({solve['gauge']}): {solve['message']}"]
+    lines += _dropped_text(solve["dropped_views"])
     for name, entry in solve["cameras"].items():
         residual = entry["residual"]
         line = (

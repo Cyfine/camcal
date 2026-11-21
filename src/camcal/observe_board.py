@@ -270,6 +270,8 @@ def observe_live(
                         role = auto_role
                         reason = " (new view: " + ", ".join(new) + ")"
 
+            if role is not None and not candidate:
+                role, message = None, "no view fixes the board pose: show more of the board"
             if role is not None:
                 if role == "world":
                     captures = [BoardCapture(c.capture_id, "solve", c.captured_at) if c.role == "world" else c for c in captures]
@@ -277,7 +279,9 @@ def observe_live(
                 capture_id = f"cap-{next_index:04d}"
                 next_index += 1
                 captures.append(BoardCapture(capture_id, role, _utc_now_iso()))
-                for name, detection in seen.items():
+                # Only views whose corners fix the board pose: the solve starts from each one's pose.
+                for name, view in candidate.items():
+                    detection = seen[name]
                     image_path = image_directory / f"{capture_id}_{name}.png"
                     cv2.imwrite(str(image_path), frames[name])
                     observations.append(
@@ -289,13 +293,7 @@ def observe_live(
                             source_image=str(image_path.relative_to(output_path.parent)),
                         )
                     )
-                    if name in candidate:
-                        views[name].append((capture_id, candidate[name]))
-                    else:
-                        try:
-                            views[name].append((capture_id, view_of(detection, by_name[name].K, by_name[name].d, corners, centre_b)))
-                        except (ValueError, cv2.error):
-                            pass
+                    views[name].append((capture_id, view))
                 flash_until = now + FLASH_S
                 _shutter()
                 message = f"{capture_id} {role}{reason}"

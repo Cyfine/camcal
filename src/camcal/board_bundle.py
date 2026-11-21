@@ -57,6 +57,18 @@ class ResidualStats:
         }
 
 
+@dataclass(frozen=True)
+class DroppedView:
+    """A view left out because its corners do not fix the board's pose (too few, or nearly on one line)."""
+
+    camera_name: str
+    capture_id: str
+    corner_count: int
+
+    def as_dict(self) -> dict[str, str | int]:
+        return {"camera": self.camera_name, "capture": self.capture_id, "corners": self.corner_count}
+
+
 @dataclass
 class BoardBundleResult:
     """Solved cameras and board poses, with residual diagnostics."""
@@ -75,6 +87,7 @@ class BoardBundleResult:
     success: bool = False
     message: str = ""
     evaluations: int = 0
+    dropped_views: tuple[DroppedView, ...] = ()
 
 
 def solve_board_bundle(
@@ -127,6 +140,16 @@ def solve_board_bundle(
     for name in observed:
         K[name], d[name] = snapshots[name].K.copy(), _five_coefficients(snapshots[name].d, name)
         sources[name] = "prior"
+    # Every view seeds the solve with its own board pose. A camera left with no view is reported
+    # below as not linked to the world.
+    dropped = tuple(
+        DroppedView(obs.camera_name, obs.capture_id, len(obs.corner_ids))
+        for obs in used
+        if _try_pnp(K[obs.camera_name], d[obs.camera_name], corners[obs.corner_ids], obs.image_points) is None
+    )
+    left_out = {(view.camera_name, view.capture_id) for view in dropped}
+    used = [obs for obs in used if (obs.camera_name, obs.capture_id) not in left_out]
+    for name in observed:
         if name in free_intrinsics:
             views = [obs for obs in used if obs.camera_name == name]
             if len(views) >= MIN_ZHANG_VIEWS:
@@ -179,6 +202,7 @@ def solve_board_bundle(
         success=bool(solution.success),
         message=str(solution.message),
         evaluations=int(solution.nfev),
+        dropped_views=dropped,
     )
 
 
@@ -211,6 +235,7 @@ def diagnose_rig(
         "captures": capture_ids,
         "baseline": {name: stats.as_dict() for name, stats in baseline.camera_stats.items()},
         "baseline_rmse_px": _overall_rmse(baseline.camera_stats),
+        "dropped_views": [view.as_dict() for view in baseline.dropped_views],
         "freed": {},
     }
     if len(observed) < 2:
@@ -259,7 +284,10 @@ def validate_transfer(
             others = [obs for obs in observations if obs is not held_out]
             if not others:
                 continue
-            W_T_B = _board_pose(others, corners, K, d, W_T_C)
+            try:
+                W_T_B = _board_pose(others, corners, K, d, W_T_C)
+            except ValueError:  # no other view fixes the board's pose
+                continue
             name = held_out.camera_name
             C_T_W = se3.inverse(np.asarray(W_T_C[name]))
             points_c = _transform(se3.compose(C_T_W, W_T_B), corners[held_out.corner_ids])
@@ -477,11 +505,24 @@ def _pnp(K, d, object_points, image_points) -> np.ndarray:
     return se3.from_rvec_tvec(rvec, tvec)
 
 
+def _try_pnp(K, d, object_points, image_points) -> np.ndarray | None:
+    """The single-view board pose, or None when the corners do not fix it."""
+    try:
+        return _pnp(K, d, object_points, image_points)
+    except (ValueError, cv2.error):
+        return None
+
+
 def _board_pose(observations, corners, K, d, W_T_C) -> np.ndarray:
     """Board pose seen by fixed, calibrated cameras."""
-    first = observations[0]
-    name = first.camera_name
-    initial = se3.compose(W_T_C[name], _pnp(K[name], d[name], corners[first.corner_ids], first.image_points))
+    for first in observations:
+        name = first.camera_name
+        C_T_B = _try_pnp(K[name], d[name], corners[first.corner_ids], first.image_points)
+        if C_T_B is not None:
+            break
+    else:
+        raise ValueError("no view fixes the board pose")
+    initial = se3.compose(W_T_C[name], C_T_B)
     C_T_W = {obs.camera_name: se3.inverse(np.asarray(W_T_C[obs.camera_name])) for obs in observations}
 
     def residuals(x):

@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation
 from camcal import se3
 from camcal.board_bundle import (
     W_T_B_WORLD,
+    DroppedView,
     _project,
     image_coverage,
     diagnose_rig,
@@ -300,3 +301,60 @@ def test_auto_capture_takes_only_new_views():
     assert corner_motion_px(base, still) < settings.still_px_per_s * 0.1
     assert corner_motion_px(base, moved) > settings.still_px_per_s * 0.1
     assert corner_motion_px(None, still) == float("inf")
+
+
+
+def _with_one_row_view(dataset, name, capture_id, W_T_B, rng):
+    """Replace ``name``'s view of ``capture_id`` by one board row and one more corner.
+
+    Five of the six corners lie on one line, so they do not fix the board's pose.
+    """
+    C_T_B = se3.compose(se3.inverse(TRUE_POSES[name]), W_T_B)
+    corners = board_corner_points(BOARD)
+    ids = np.arange(6)
+    points_c = corners[ids] @ C_T_B[:3, :3].T + C_T_B[:3, 3]
+    intr = np.r_[TRUE_K[name][0, 0], TRUE_K[name][1, 1], TRUE_K[name][0, 2], TRUE_K[name][1, 2], TRUE_D[name]]
+    pixels = _project(points_c, intr) + rng.normal(0.0, 0.2, (len(ids), 2))
+    observations = [obs for obs in dataset.observations if (obs.camera_name, obs.capture_id) != (name, capture_id)]
+    observations.append(BoardObservation(name, capture_id, ids, pixels))
+    return BoardObservationDataset(dataset.board, dataset.cameras, dataset.captures, tuple(observations))
+
+
+def test_view_whose_corners_do_not_fix_the_board_is_left_out():
+    rng = np.random.default_rng(3)
+    poses = [W_T_B_WORLD] + board_poses(46, np.random.default_rng(3))
+    dataset, _ = make_dataset(np.random.default_rng(3))
+    # cap-003 is in the shared volume (every third pose) and seen by every camera.
+    shared = "cap-003"
+    assert {obs.camera_name for obs in dataset.observations if obs.capture_id == shared} == set(TRUE_POSES)
+    dataset = _with_one_row_view(dataset, "d415", shared, poses[3], rng)
+    # In a validation capture such a view comes first, where the transfer check seeds the board pose.
+    validation = next(c.capture_id for c in dataset.captures if c.role == "validation")
+    dataset = _with_one_row_view(dataset, "a", validation, poses[int(validation[4:])], rng)
+    dataset = BoardObservationDataset(
+        dataset.board,
+        dataset.cameras,
+        dataset.captures,
+        tuple(sorted(dataset.observations, key=lambda obs: (obs.capture_id, obs.camera_name))),
+    )
+
+    result = solve_board_bundle(dataset, free_intrinsics=["a", "c"])
+    assert result.dropped_views == (DroppedView("d415", shared, 6),)
+    assert ("d415", shared) not in result.observation_rmse_px
+    for name, truth in TRUE_POSES.items():
+        assert se3.translation_distance(result.W_T_C[name], truth) < 0.006, name
+    assert result.camera_stats["a"].rmse_px < 0.4
+
+    rows = validate_transfer(dataset, result.K, result.d, result.W_T_C)
+    assert any(row["capture"] == validation for row in rows)
+
+
+def test_camera_whose_only_views_are_left_out_is_not_linked():
+    dataset, _ = make_dataset(np.random.default_rng(3), solve=12, validation=0)
+    poses = [W_T_B_WORLD] + board_poses(12, np.random.default_rng(3))
+    rng = np.random.default_rng(4)
+    for obs in [obs for obs in dataset.observations if obs.camera_name == "d415"]:
+        dataset = _with_one_row_view(dataset, "d415", obs.capture_id, poses[int(obs.capture_id[4:])], rng)
+    with pytest.raises(ValueError, match="not linked"):
+        solve_board_bundle(dataset, free_intrinsics=["a", "c"])
+
